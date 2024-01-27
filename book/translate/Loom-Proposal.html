@@ -175,15 +175,37 @@
                     <main>
                         <h5 id="translated-from-httpscropenjdkorgrpresslerloomloom-proposalhtml"><a class="header" href="#translated-from-httpscropenjdkorgrpresslerloomloom-proposalhtml">translated from https://cr.openjdk.org/~rpressler/loom/Loom-Proposal.html</a></h5>
 <h1 id="loom项目java-虚拟机的-fibers-和-continuations"><a class="header" href="#loom项目java-虚拟机的-fibers-和-continuations">Loom项目：Java 虚拟机的 Fibers 和 Continuations</a></h1>
+<p>[TOC]</p>
 <h2 id="概览"><a class="header" href="#概览">概览</a></h2>
 <hr/>
-<p>Loom项目的使命是使人们更容易的编写，调试，描述和维护并发程序，以满足今天对并发程序的需求。Java从一开始就提供了线程, 一直以来都是一种自然和方便的并发结构(先不谈论线程间通信这个另外的话题),现在正在被一种不是太容易的抽象所取代，因为它作为操作系统内核线程的实现并不足以满足今天的需求，它浪费计算资源，而这在云计算领域尤其重要。Loom项目将会引进fiber作为一种轻量，高效的线程来被Java虚拟机管理，让开发者使用少量成本，就可以使用相同的抽象并且带来更高的性能。我们想再次让并发编程变得简单。fiber由两部分组成 - continuation和调度器。由于Java已经以ForkJoinPool的方式提供了一个非常优秀的调度器了，fiber的实现将会在JVM上添加continuations.</p>
+<p>Loom项目的使命是使人们更容易的编写，调试，分析和维护并发程序，以满足今天对并发程序的需求。Java从一开始就提供了线程, 一直以来都是一种自然和方便的并发结构(先不谈论线程间通信这个另外的话题),现在正在被一种不是太容易的抽象所取代，因为它作为操作系统内核线程的实现并不足以满足今天的需求，它浪费计算资源，而这在云计算领域尤其重要。Loom项目将会引进fiber作为一种轻量，高效的线程来被Java虚拟机管理，让开发者使用少量成本，就可以使用相同的抽象并且带来更高的性能。我们想再次让并发编程变得简单。fiber由两部分组成 - continuation和调度器。由于Java已经以ForkJoinPool的方式提供了一个非常优秀的调度器了，fiber的实现将会在JVM上添加continuations.</p>
 <h2 id="动机"><a class="header" href="#动机">动机</a></h2>
 <hr/>
 <p>很多JVM上的应用程序， 像服务器和数据库，是并发的，这意味着他们需要并发的服务很多请求，并且这些请求并发的对计算资源进行竞争。Loom项目的目的是有效减小编写并发程序的困难程度，或者更准确的说，根除编写并发程序时在简单和高效之间的权衡。</p>
 <p>二十多年来，Java最重要的贡献之一就是原生支持献策会给你和同步。Java线程(直接或者间接使用线程，例如Java Servlets 处理HTTP请求)提供了一个相对简单的抽象来编写并发应用程序。当今，编写能满足需求的并发程序的难点之一是线程运行时提供的软件并发单元不能匹配领域并发单元的规模,例如一个用户， 一个事务，或者一个操作。尽管应用程序的并发单元略显粗糙--比如说一个会话，被一个socket连接表示--一个服务端可以处理一百万个并发socket连接，但是Java运行时不行，Java运行时线程使用操作系统的线程实现，并不能有效处理多于数千的请求。这种数量级的差异带来很大影响。</p>
 <p>程序员被迫做出选择，或者直接以线程建模领域并发单元，同时失去一台服务器可以支持大规模并发的优势, 或者采用其他比线程更细粒度的并发实现(tasks)，编写异步代码并且不阻塞执行线程。</p>
-
+<p>近些年已经看到很多异步API被引入Java生态系统， 来自JDK的异步NIO,异步servlets和很多异步的第三方库. 这些APIs被创建，并不是因为他们容易理解或编写，相反他们实际上更难；不是因为他们容易调试或者分析-他们更难，甚至不产生有意义的调用栈;并不是因为比同步API更容易组合 - 他们组合的并不优美；并不是因为他们更适合接下来的语言或者跟已存在的代码集成更好 - 他们反而更糟， 仅仅是因为在Java中，软件并发单元的实现线程在空间占用和性能视角来说不足。这是一个负面的案例，丢掉一个优秀和自然的抽象而拾起一个不那么自然的抽象，这在很多方面很不好，仅仅是因为这个抽象的运行时性能属性。</p>
+<p>但是使用内核级线程来实现Java的线程确实有一些优势--尤其重要的是所有的本地代码是被内核线程支持的，线程中的Java代码可以访问本地API。上面说的弊端也是不可忽视的，导致难写，难维护，或者导致很严重的计算资源浪费， 这个这云计算环境中尤甚。其实，一些语言或者语言的运行时已经成功提供了轻量级线程的实现，最出名的莫过于Erlang和Go,这种特性是很流行很有用的。</p>
+<p>这个项目的主要目标就是添加我们叫做fibers的轻量级线程，被Java运行时管理，可以跟重量级，基于操作系统的线程共存使用。Fibers非常轻量级，比内核线程占用内存少，任务上下文切换的成本近乎0.单个JVM实例可以催动百万级的fibers,程序员不比在为同步阻塞调用感到不适，这里阻塞成本几乎免费。除了让并发应用程序更简单和更灵活，它还可以让库作者受益，他们不必再为了简单性和性能而权衡提供同步和异步两套API。简单而不妥协。</p>
+<p>我们将会看到，一个线程并不是一个原子性的结构，而是两个东西的组合 -- 一个调度器和一个continuation.这是我们目前关心的两个事情，在此基础上实现Java fibers, 尽管fibers才是这个项目的动机，同时也作为面向用户的抽象添加continuations,因为continuations也有应用案例，比如 Python的generators。</p>
+<h2 id="目标和范围"><a class="header" href="#目标和范围">目标和范围</a></h2>
+<hr/>
+<h2 id="术语"><a class="header" href="#术语">术语</a></h2>
+<hr/>
+<h2 id="线程是什么"><a class="header" href="#线程是什么">线程是什么</a></h2>
+<hr/>
+<p>Fibers</p>
+<hr/>
+<p>Continuations</p>
+<hr/>
+<p>调度器</p>
+<hr/>
+<p>解开后调用</p>
+<hr/>
+<p>额外的挑战</p>
+<hr/>
+<p>其他方法</p>
+<hr/>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
@@ -213,22 +235,6 @@
 
         </div>
 
-        <!-- Livereload script (if served using the cli tool) -->
-        <script>
-            const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsAddress = wsProtocol + "//" + location.host + "/" + "__livereload";
-            const socket = new WebSocket(wsAddress);
-            socket.onmessage = function (event) {
-                if (event.data === "reload") {
-                    socket.close();
-                    location.reload();
-                }
-            };
-
-            window.onbeforeunload = function() {
-                socket.close();
-            }
-        </script>
 
 
 
