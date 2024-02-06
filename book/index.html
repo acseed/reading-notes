@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="translate/Loom-Proposal.html" class="active"><strong aria-hidden="true">1.</strong> translation</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="translate/Loom-Proposal.html"><strong aria-hidden="true">1.1.</strong> Loom-Proposal</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="translate/Loom-Proposal.html" class="active"><strong aria-hidden="true">1.</strong> translation</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="translate/Loom-Proposal.html"><strong aria-hidden="true">1.1.</strong> Loom-Proposal</a></li><li class="chapter-item expanded "><a href="translate/JEP_464.html"><strong aria-hidden="true">1.2.</strong> JEP 464</a></li><li class="chapter-item expanded "><a href="translate/On-the-Performance-of-User-Mode-Threads-and-Coroutines.html"><strong aria-hidden="true">1.3.</strong> on the performance of user-mode threads and coroutines</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -226,6 +226,8 @@
 <p>OS实现线程最大的问题在于调度器。一方面，OS调度器运行在内核态，每当线程阻塞，调度器接管，一个并不廉价的用户态内核态上下文切换就会发生。另一方面，OS调度器是为通用目的设计的，调度各种各样的线程，但是一个解码视频的线程跟一个服务网络请求的线程并不一样，相同的调度算法针对两者并不是最优的。在服务器上处理事务的线程倾向于某种确定的模式，这对通用调度去提出了挑战。例如，这个一个普遍的模式，线程A对请求执行一些操作，然后传递一些数据给线程B, 线程B进行进一步处理。在传递数据的时候这需要一些同步，这个可能涉及一个锁或者消息队列，但是模式是一样的： A操作一些数据x，然后交给B,唤醒B然后阻塞直到A需要处理另一个请求。这个模式是如此的通用以至于我们可以假设A会唤醒B之后会阻塞一会， 然后调度B到跟A相同的内核将会是有益的，因为x已经在这个核的缓存上了；另外，将B加入内核本地队列并不需要任何高昂的同步.实际上，一个工作窃取的调度器比如ForkJoinPool做了这种精确的假定，他把被调度的任务加入一个本地队列。然而，OS内核不能做这种假设，就它所知，线程A想在唤醒B之后运行一会，它会调度最近唤醒的B到一个不同的内核，因此， 两边都需要同步，同时在B访问x的时候导致缓存未命中。</p>
 <h2 id="fibers"><a class="header" href="#fibers">Fibers</a></h2>
 <hr/>
+<p>Fibers我们称作Java的计划用户级线程。本部分将会列出fibers的需求，探索一些设计问题和选择。并是详尽的描述，而是仅仅展现设计空间大致的轮廓， 提供一个涉及到的挑战的直观感受。</p>
+<p>就基本的能力而言，fibers应该可以跟其他的线程(无论轻量级还是重量级)一起可以运行任意的Java代码，允许用户等待他们结束，或者称作join他们。</p>
 <h2 id="continuations"><a class="header" href="#continuations">Continuations</a></h2>
 <hr/>
 <h2 id="调度器"><a class="header" href="#调度器">调度器</a></h2>
